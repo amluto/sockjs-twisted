@@ -26,18 +26,11 @@
 import json
 
 def normalize(s, encoding):
-    if not isinstance(s, basestring):
-        try:
-            return str(s)
-        except UnicodeEncodeError:
-            return unicode(s).encode('utf-8','backslashreplace')
-    elif isinstance(s, unicode):
-        return s.encode('utf-8', 'backslashreplace')
-    else:
-        if s.decode('utf-8', 'ignore').encode('utf-8', 'ignore') == s: # Ensure s is a valid UTF-8 string
-            return s
-        else: # Otherwise assume it is Windows 1252
-            return s.decode(encoding, 'replace').encode('utf-8', 'backslashreplace')
+    # The old txsockjs code here was somewhat nonsensical.  Just require
+    # a str.
+    if not isinstance(s, str):
+        raise TypeError('normalize requires a string')
+    return s
 
 def broadcast(message, targets, encoding="cp1252"):
     message = normalize(message, encoding)

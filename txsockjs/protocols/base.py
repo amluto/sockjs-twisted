@@ -73,7 +73,7 @@ class StubResource(resource.Resource, ProtocolWrapper):
     def getPeer(self):
         if self.parent._options["proxy_header"] and self.request.requestHeaders.hasHeader(self.parent._options["proxy_header"]):
             ip = self.request.requestHeaders.getRawHeaders(self.parent._options["proxy_header"])[0].split(",")[-1].strip()
-            if re.match("\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", ip):
+            if re.match(b"\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", ip):
                 return address.IPv4Address("TCP", ip, None)
             else:
                 return address.IPv6Address("TCP", ip, None)
@@ -124,7 +124,7 @@ class Stub(ProtocolWrapper):
             self.disconnect()
     
     def heartbeat(self):
-        self.pending.append('h')
+        self.pending.append(b'h')
         self.heartbeat_timer = reactor.callLater(self.parent._options['heartbeat'], self.heartbeat)
         self.sendData()
     
@@ -162,11 +162,11 @@ class Stub(ProtocolWrapper):
     def sendData(self):
         if self.transport:
             if self.connecting:
-                self.transport.write('o')
+                self.transport.write(b'o')
                 self.connecting = False
                 self.sendData()
             elif self.disconnecting:
-                self.transport.write('c[3000,"Go away!"]')
+                self.transport.write(b'c[3000,"Go away!"]')
                 if self.transport:
                     self.transport.loseConnection()
             else:
@@ -180,7 +180,7 @@ class Stub(ProtocolWrapper):
         if self.buffer:
             data = 'a{0}'.format(json.dumps(self.buffer, separators=(',',':')))
             self.buffer = []
-            self.pending.append(data)
+            self.pending.append(data.encode())
     
     def requeue(self, data):
         data.extend(self.pending)
@@ -192,7 +192,7 @@ class Stub(ProtocolWrapper):
         if data == '':
             return "Payload expected."
         try:
-            packets = json.loads(data)
+            packets = json.loads(data.decode())
             for p in packets:
                 p = normalize(p, self.parent._options['encoding'])
                 if self.protocol:

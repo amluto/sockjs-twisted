@@ -28,22 +28,22 @@ from twisted.web import resource, http
 class Info(resource.Resource):
     def render_GET(self, request):
         self.parent.setBaseHeaders(request,False)
-        request.setHeader('content-type', 'application/json; charset=UTF-8')
+        request.setHeader(b'content-type', b'application/json; charset=UTF-8')
         data = {
             'websocket': self.parent._options['websocket'],
             'cookie_needed': self.parent._options['cookie_needed'],
             'origins': ['*:*'],
             'entropy': random.randint(0,2**32-1)
         }
-        return json.dumps(data)
+        return json.dumps(data).encode()
     
     def render_OPTIONS(self, request):
         request.setResponseCode(http.NO_CONTENT)
         self.parent.setBaseHeaders(request,False)
-        request.setHeader('Cache-Control', 'public, max-age=31536000')
-        request.setHeader('access-control-max-age', '31536000')
-        request.setHeader('Expires', 'Fri, 01 Jan 2500 00:00:00 GMT') #Get a new library by then
-        request.setHeader('Access-Control-Allow-Methods', 'OPTIONS, GET') # Hardcoding this may be bad?
+        request.setHeader(b'Cache-Control', b'public, max-age=31536000')
+        request.setHeader(b'access-control-max-age', b'31536000')
+        request.setHeader(b'Expires', 'Fri, 01 Jan 2500 00:00:00 GMT') #Get a new library by then
+        request.setHeader(b'Access-Control-Allow-Methods', b'OPTIONS, GET') # Hardcoding this may be bad?
         return ""
 
 class IFrame(resource.Resource):
