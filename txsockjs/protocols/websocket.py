@@ -41,7 +41,7 @@ import json, re
 class PeerOverrideProtocol(ProtocolWrapper):
     def getPeer(self):
         if self.parent._options["proxy_header"] and self.request.requestHeaders.hasHeader(self.parent._options["proxy_header"]):
-            ip = self.request.requestHeaders.getRawHeaders(self.parent._options["proxy_header"])[0].split(",")[-1].strip()
+            ip = self.request.requestHeaders.getRawHeaders(self.parent._options["proxy_header"])[0].decode().split(",")[-1].strip()
             if re.match("\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}", ip):
                 return address.IPv4Address("TCP", ip, None)
             else:
@@ -52,7 +52,7 @@ class JsonProtocol(PeerOverrideProtocol):
     def makeConnection(self, transport):
         directlyProvides(self, providedBy(transport))
         Protocol.makeConnection(self, transport)
-        self.transport.write("o")
+        self.transport.write(b"o")
         self.factory.registerProtocol(self)
         self.wrappedProtocol.makeConnection(self)
         self.heartbeat_timer = reactor.callLater(self.parent._options['heartbeat'], self.heartbeat)
@@ -64,13 +64,13 @@ class JsonProtocol(PeerOverrideProtocol):
         data = list(data)
         for index, p in enumerate(data):
             data[index] = normalize(p, self.parent._options['encoding'])
-        self.transport.write("a{0}".format(json.dumps(data, separators=(',',':'))))
+        self.transport.write(b"a" + json.dumps(data, separators=(',',':')).encode())
     
     def writeRaw(self, data):
         self.transport.write(data)
     
     def loseConnection(self):
-        self.transport.write('c[3000,"Go away!"]')
+        self.transport.write(b'c[3000,"Go away!"]')
         ProtocolWrapper.loseConnection(self)
 
     def connectionLost(self, reason=None):
@@ -91,7 +91,7 @@ class JsonProtocol(PeerOverrideProtocol):
                 ProtocolWrapper.dataReceived(self, d)
 
     def heartbeat(self):
-        self.transport.write('h')
+        self.transport.write(b'h')
         self.heartbeat_timer = reactor.callLater(self.parent._options['heartbeat'], self.heartbeat)
 
 class PeerOverrideFactory(WrappingFactory):
@@ -123,20 +123,20 @@ class RawWebSocket(WebSocketsResource, OldWebSocketsResource):
         if self._factory is None:
             self._makeFactory()
         # Override handling of invalid methods, returning 400 makes SockJS mad
-        if request.method != 'GET':
+        if request.method != b'GET':
             request.setResponseCode(405)
             request.defaultContentType = None # SockJS wants this gone
-            request.setHeader('Allow','GET')
+            request.setHeader(b'Allow',b'GET')
             return ""
         # Override handling of lack of headers, again SockJS requires non-RFC stuff
-        upgrade = request.getHeader("Upgrade")
-        if upgrade is None or "websocket" not in upgrade.lower():
+        upgrade = request.getHeader(b"Upgrade")
+        if upgrade is None or b"websocket" not in upgrade.lower():
             request.setResponseCode(400)
-            return 'Can "Upgrade" only to "WebSocket".'
-        connection = request.getHeader("Connection")
-        if connection is None or "upgrade" not in connection.lower():
+            return b'Can "Upgrade" only to "WebSocket".'
+        connection = request.getHeader(b"Connection")
+        if connection is None or b"upgrade" not in connection.lower():
             request.setResponseCode(400)
-            return '"Connection" must be "Upgrade".'
+            return b'"Connection" must be "Upgrade".'
         # Defer to inherited methods
         ret = WebSocketsResource.render(self, request) # For RFC versions of websockets
         if ret is NOT_DONE_YET:

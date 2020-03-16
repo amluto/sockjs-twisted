@@ -26,15 +26,16 @@
 from twisted.internet import reactor
 from hashlib import md5
 from string import digits
+import binascii
 
 def _isHixie75(request):
-    return request.getHeader("Sec-WebSocket-Version") is None and \
-        request.getHeader("Sec-WebSocket-Key1") is None and \
-        request.getHeader("Sec-WebSocket-Key2") is None
+    return request.getHeader(b"Sec-WebSocket-Version") is None and \
+        request.getHeader(b"Sec-WebSocket-Key1") is None and \
+        request.getHeader(b"Sec-WebSocket-Key2") is None
 
 def _isHybi00(request):
-    return request.getHeader("Sec-WebSocket-Key1") is not None and \
-        request.getHeader("Sec-WebSocket-Key2") is not None
+    return request.getHeader(b"Sec-WebSocket-Key1") is not None and \
+        request.getHeader(b"Sec-WebSocket-Key2") is not None
 
 def _challenge(key1, key2, challenge):
     first = int("".join(i for i in key1 if i in digits)) / key1.count(" ")
@@ -114,7 +115,7 @@ _opcodeForType = {
 # Authentication for WS.
 
 # The GUID for WebSockets, from RFC 6455.
-_WS_GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
+_WS_GUID = b"258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
 
 
@@ -130,7 +131,7 @@ def _makeAccept(key):
     @rtype: C{str}
     @return: An encoded response.
     """
-    return sha1("%s%s" % (key, _WS_GUID)).digest().encode("base64").strip()
+    return binascii.b2a_base64(sha1(b"%s%s" % (key, _WS_GUID)).digest()).strip()
 
 
 
@@ -155,11 +156,10 @@ def _mask(buf, key):
     """
 
     # This is super-secure, I promise~
-    key = [ord(i) for i in key]
     buf = list(buf)
     for i, char in enumerate(buf):
-        buf[i] = chr(ord(char) ^ key[i % 4])
-    return "".join(buf)
+        buf[i] = char ^ key[i % 4]
+    return bytes(buf)
 
 
 
@@ -182,20 +182,20 @@ def _makeFrame(buf, old, _opcode=_CONTROLS.NORMAL):
     if old:
         if _opcode != _CONTROLS.NORMAL:
             return None
-        return "\x00{0}\xFF".format(buf)
+        return b"\x00%s\xFF" % buf
     else:
         bufferLength = len(buf)
 
         if bufferLength > 0xffff:
-            length = "\x7f%s" % pack(">Q", bufferLength)
+            length = b"\x7f%s" % pack(">Q", bufferLength)
         elif bufferLength > 0x7d:
-            length = "\x7e%s" % pack(">H", bufferLength)
+            length = b"\x7e%s" % pack(">H", bufferLength)
         else:
-            length = chr(bufferLength)
+            length = bytes((bufferLength,))
 
         # Always make a normal packet.
-        header = chr(0x80 | _opcodeForType[_opcode])
-        frame = "%s%s%s" % (header, length, buf)
+        header = bytes((0x80 | _opcodeForType[_opcode],))
+        frame = b"%s%s%s" % (header, length, buf)
         return frame
 
 
@@ -211,17 +211,17 @@ def _parseFrames(buf, old):
     @return: A list of frames.
     """
     if old:
-        start = buf.find("\x00")
+        start = buf.find(b"\x00")
         tail = 0
         frames = []
         while start != -1:
-            end = buf.find("\xFF",start+1)
+            end = buf.find(b"\xFF",start+1)
             if end == -1:
                 break
             frame = buf[start+1:end]
             frames.append((_CONTROLS.NORMAL, frame))
             tail = end + 1
-            start = buf.find("\x00", tail)
+            start = buf.find(b"\x00", tail)
         return frames, buf[tail:]
     else:
         start = 0
@@ -234,7 +234,7 @@ def _parseFrames(buf, old):
 
             # Grab the header. This single byte holds some flags nobody cares
             # about, and an opcode which nobody cares about.
-            header = ord(buf[start])
+            header = buf[start]
             if header & 0x70:
                 # At least one of the reserved flags is set. Pork chop sandwiches!
                 raise _WSException("Reserved flag in frame (%d)" % header)
@@ -249,7 +249,7 @@ def _parseFrames(buf, old):
 
             # Get the payload length and determine whether we need to look for an
             # extra length.
-            length = ord(buf[start + 1])
+            length = buf[start + 1]
             masked = length & 0x80
             length &= 0x7f
 
@@ -341,7 +341,7 @@ class _WebSocketsProtocol(ProtocolWrapper):
         Find frames in incoming data and pass them to the underlying protocol.
         """
         try:
-            frames, rest = _parseFrames("".join(self._buffer), self.old)
+            frames, rest = _parseFrames(b"".join(self._buffer), self.old)
         except _WSException:
             # Couldn't parse all the frames, something went wrong, let's bail.
             log.err()
@@ -571,38 +571,38 @@ class OldWebSocketsResource(object):
         # You might want to pop open the RFC and read along.
         failed = False
 
-        if request.method != "GET":
+        if request.method != b"GET":
             # 4.2.1.1 GET is required.
             failed = True
 
-        upgrade = request.getHeader("Upgrade")
-        if upgrade is None or "websocket" not in upgrade.lower():
+        upgrade = request.getHeader(b"Upgrade")
+        if upgrade is None or b"websocket" not in upgrade.lower():
             # 4.2.1.3 Upgrade: WebSocket is required.
             failed = True
 
-        connection = request.getHeader("Connection")
-        if connection is None or "upgrade" not in connection.lower():
+        connection = request.getHeader(b"Connection")
+        if connection is None or b"upgrade" not in connection.lower():
             # 4.2.1.4 Connection: Upgrade is required.
             failed = True
 
-        ##key = request.getHeader("Sec-WebSocket-Key")
+        ##key = request.getHeader(b"Sec-WebSocket-Key")
         ##if key is None:
         ##    # 4.2.1.5 The challenge key is required.
         ##    failed = True
 
-        ##version = request.getHeader("Sec-WebSocket-Version")
+        ##version = request.getHeader(b"Sec-WebSocket-Version")
         ##if version != "13":
         ##    # 4.2.1.6 Only version 13 works.
         ##    failed = True
         ##    # 4.4 Forward-compatible version checking.
-        ##    request.setHeader("Sec-WebSocket-Version", "13")
+        ##    request.setHeader(b"Sec-WebSocket-Version", "13")
 
         if failed:
             request.setResponseCode(400)
             return ""
 
         askedProtocols = request.requestHeaders.getRawHeaders(
-            "Sec-WebSocket-Protocol")
+            b"Sec-WebSocket-Protocol")
         protocol, protocolName = self.lookupProtocol(askedProtocols, request, True)
 
         # If a protocol is not created, we deliver an error status.
@@ -615,45 +615,45 @@ class OldWebSocketsResource(object):
         # 4.2.2.5.1 101 Switching Protocols
         request.setResponseCode(101)
         # 4.2.2.5.2 Upgrade: websocket
-        request.setHeader("Upgrade", "WebSocket")
+        request.setHeader(b"Upgrade", b"WebSocket")
         # 4.2.2.5.3 Connection: Upgrade
-        request.setHeader("Connection", "Upgrade")
+        request.setHeader(b"Connection", b"Upgrade")
         ## This is a big mess of setting various headers based on which version we are
         ## And determining whether to use "old frames" or "new frames"
         if _isHixie75(request) or _isHybi00(request):
             protocol.old = True
-            host = request.getHeader("Host") or "example.com"
-            origin = request.getHeader("Origin") or "http://example.com"
-            location = "{0}://{1}{2}".format("wss" if request.isSecure() else "ws", host, request.path)
+            host = request.getHeader(b"Host") or b"example.com"
+            origin = request.getHeader(b"Origin") or b"http://example.com"
+            location = b"%s://%s%s" % (b"wss" if request.isSecure() else b"ws", host, request.path)
             if _isHixie75(request):
-                request.setHeader("WebSocket-Origin", origin)
-                request.setHeader("WebSocket-Location", location)
+                request.setHeader(b"WebSocket-Origin", origin)
+                request.setHeader(b"WebSocket-Location", location)
                 if protocolName:
-                    request.setHeader("WebSocket-Protocol", protocolName)
+                    request.setHeader(b"WebSocket-Protocol", protocolName)
             else:
-                protocol.challenge = lambda x: _challenge(request.getHeader("Sec-WebSocket-Key1"), request.getHeader("Sec-WebSocket-Key2"), x)
-                request.setHeader("Sec-WebSocket-Origin", origin)
-                request.setHeader("Sec-WebSocket-Location", location)
+                protocol.challenge = lambda x: _challenge(request.getHeader("Sec-WebSocket-Key1"), request.getHeader(b"Sec-WebSocket-Key2"), x)
+                request.setHeader(b"Sec-WebSocket-Origin", origin)
+                request.setHeader(b"Sec-WebSocket-Location", location)
                 if protocolName:
-                    request.setHeader("Sec-WebSocket-Protocol", protocolName)
+                    request.setHeader(b"Sec-WebSocket-Protocol", protocolName)
         else:
             protocol.old = False
-            key = request.getHeader("Sec-WebSocket-Key")
+            key = request.getHeader(b"Sec-WebSocket-Key")
             if key is None:
                 request.setResponseCode(400)
                 return ""
-            version = request.getHeader("Sec-WebSocket-Version")
-            if version not in ("7","8","13"):
+            version = request.getHeader(b"Sec-WebSocket-Version")
+            if version not in (b"7",b"8",b"13"):
                 request.setResponseCode(400)
-                request.setHeader("Sec-WebSocket-Version", "13")
+                request.setHeader(b"Sec-WebSocket-Version", "13")
                 return ""
-            request.setHeader("Sec-WebSocket-Version", version)
-            request.setHeader("Sec-WebSocket-Accept", _makeAccept(key))
+            request.setHeader(b"Sec-WebSocket-Version", version)
+            request.setHeader(b"Sec-WebSocket-Accept", _makeAccept(key))
             if protocolName:
-                request.setHeader("Sec-WebSocket-Protocol", protocolName)
+                request.setHeader(b"Sec-WebSocket-Protocol", protocolName)
 
         # Provoke request into flushing headers and finishing the handshake.
-        request.write("")
+        request.write(b"")
 
         # And now take matters into our own hands. We shall manage the
         # transport's lifecycle.
