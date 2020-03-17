@@ -451,7 +451,7 @@ class _WebSocketsProtocol(ProtocolWrapper):
         if not self.disconnecting:
             if not self.challenge:
                 self.disconnecting = True
-                frame = _makeFrame("", self.old, _opcode=_CONTROLS.CLOSE)
+                frame = _makeFrame(b"", self.old, _opcode=_CONTROLS.CLOSE)
                 if frame:
                     self.transport.write(frame)
                 else:
